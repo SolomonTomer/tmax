@@ -4,7 +4,7 @@ title: 'Bug: Restore closed pane skips color cycle when snapshot has no color'
 status: Done
 assignee: []
 created_date: '2026-05-11 05:59'
-updated_date: '2026-05-11 05:59'
+updated_date: '2026-05-11 09:07'
 labels: []
 dependencies: []
 ---
@@ -23,8 +23,16 @@ restorePaneFromSnapshot in src/renderer/state/terminal-store.ts called createTer
 - [x] #4 Workspace restore path also benefits (same restorePaneFromSnapshot is reused per pane)
 <!-- AC:END -->
 
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+$Follow-up after first manual test: openCopilotSession / openClaudeCodeSession (the "Sessions" window restore path) also bypassed the cycle because openAiSession built the TerminalInstance without setting tabColor. Extracted pickNextTabColor helper from createTerminal and applied it in both createTerminal and openAiSession. restorePaneFromSnapshot already inherits via createTerminal.
+<!-- SECTION:NOTES:END -->
+
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
 Changed 	abColor: snap.tabColor to 	abColor: snap.tabColor ?? fresh.tabColor in restorePaneFromSnapshot (src/renderer/state/terminal-store.ts). createTerminal already runs the correct per-workspace least-used color cycle gated by autoColorTabs; the prior code threw that result away. With the nullish-coalesce, saved colors win when present, and a colorless snapshot inherits the freshly cycled color. Behavior when autoColorTabs is off is preserved (fresh.tabColor is undefined). One-line behavioral fix plus an explanatory comment; no test coverage added because the repo has no unit-test framework and adding e2e color-cycle scaffolding was out of scope.
+
+$Follow-up: Sessions-window restore (openAiSession) also bypassed the color cycle. Extracted pickNextTabColor helper (per-workspace least-used cycle, autoColorTabs-gated) and applied it in createTerminal and openAiSession. All three pane-creation paths (Ctrl+T new tab, Ctrl+Shift+T undo close, Sessions window open) now share one cycling implementation.
 <!-- SECTION:FINAL_SUMMARY:END -->
