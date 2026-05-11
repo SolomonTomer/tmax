@@ -106,7 +106,11 @@ async function restorePaneFromSnapshot(
     ...fresh,
     title: snap.title,
     customTitle: snap.customTitle,
-    tabColor: snap.tabColor,
+    // Keep the saved color when present; fall back to whatever createTerminal
+    // auto-assigned (which respects autoColorTabs + the per-workspace least-used
+    // cycle). Fixes the case where a pane was closed without a color and the
+    // restore would otherwise wipe the freshly cycled color back to undefined.
+    tabColor: snap.tabColor ?? fresh.tabColor,
     workspaceId: targetWs,
   });
   set({ terminals: newTerminals });
