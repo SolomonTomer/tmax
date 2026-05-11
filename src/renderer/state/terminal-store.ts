@@ -219,6 +219,9 @@ async function openAiSession(
     wsl: isWsl || undefined,
     wslDistro: wslDistro || undefined,
     workspaceId: get().activeWorkspaceId,
+    // Participate in the new-tab color cycle so opening a saved AI session
+    // from the Sessions window picks a palette color, just like Ctrl+T.
+    tabColor: pickNextTabColor(get().autoColorTabs, get().terminals, get().activeWorkspaceId),
   };
 
   const { terminals, layout } = get();
@@ -266,6 +269,41 @@ export const TAB_COLORS = [
   { name: 'Gray', value: '#737373' },
   { name: 'Dark', value: '#323130' },
 ];
+
+/**
+ * Pick the next tab color for a new pane in the given workspace, using the
+ * least-used palette color so colors cycle deterministically. Returns
+ * undefined when autoColorTabs is off (callers should leave tabColor unset).
+ *
+ * Scope is per-workspace: a new workspace's first pane gets the first MS
+ * logo color, not "color #5". Used by createTerminal (manual new tab),
+ * openAiSession (Sessions window restore), and restorePaneFromSnapshot
+ * (Ctrl+Shift+T undo close) so all pane-creation paths share one cycle.
+ */
+export function pickNextTabColor(
+  autoColorTabs: boolean,
+  terminals: Map<TerminalId, TerminalInstance>,
+  activeWorkspaceId: WorkspaceId,
+): string | undefined {
+  if (!autoColorTabs) return undefined;
+  const colorCounts = new Map<string, number>();
+  for (const c of TAB_COLORS) colorCounts.set(c.value, 0);
+  for (const t of terminals.values()) {
+    if ((t.workspaceId ?? activeWorkspaceId) !== activeWorkspaceId) continue;
+    if (t.tabColor && colorCounts.has(t.tabColor)) {
+      colorCounts.set(t.tabColor, (colorCounts.get(t.tabColor) ?? 0) + 1);
+    }
+  }
+  let minCount = Infinity;
+  let pick: string | undefined;
+  for (const [color, count] of colorCounts) {
+    if (count < minCount) {
+      minCount = count;
+      pick = color;
+    }
+  }
+  return pick;
+}
 
 // ── Theme → CSS variable sync ────────────────────────────────────────
 
@@ -1088,29 +1126,8 @@ export const useTerminalStore = create<TerminalStore>((set, get) => ({
       rows: 24,
     });
 
-    // Auto-assign a color if colors mode is active — pick the least-used palette color.
-    // Scope the count to the active workspace so each workspace colorizes from
-    // scratch (a new ws's first pane gets the first MS color, not "color #5").
-    const hasColors = get().autoColorTabs;
-    const activeWsId = get().activeWorkspaceId;
-    let tabColor: string | undefined;
-    if (hasColors) {
-      const colorCounts = new Map<string, number>();
-      for (const c of TAB_COLORS) colorCounts.set(c.value, 0);
-      for (const t of terminals.values()) {
-        if ((t.workspaceId ?? activeWsId) !== activeWsId) continue;
-        if (t.tabColor && colorCounts.has(t.tabColor)) {
-          colorCounts.set(t.tabColor, (colorCounts.get(t.tabColor) ?? 0) + 1);
-        }
-      }
-      let minCount = Infinity;
-      for (const [color, count] of colorCounts) {
-        if (count < minCount) {
-          minCount = count;
-          tabColor = color;
-        }
-      }
-    }
+    // Auto-assign a color via the shared cycle (least-used in active workspace).
+    const tabColor = pickNextTabColor(get().autoColorTabs, terminals, get().activeWorkspaceId);
 
     const instance: TerminalInstance = {
       id,
